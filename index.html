@@ -71,8 +71,9 @@
           <span>Google Calendar: <strong id="gcalStatusText" class="text-slate-200">Disconnected</strong></span>
         </div>
 
-        <button onclick="openSettingsModal()" class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition text-sm" title="Google API Settings">
+        <button onclick="openSettingsModal()" class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition text-sm flex items-center gap-1.5" title="Google API Settings & Fix 401 Error">
           <i class="fa-solid fa-gear"></i>
+          <span class="text-xs hidden sm:inline font-medium">Setup / Fix Error</span>
         </button>
       </div>
     </div>
@@ -190,10 +191,34 @@
           <p class="text-xs text-slate-400 mt-0.5" id="calendarNameDisplay">Target Calendar: Primary (Default)</p>
         </div>
 
-        <div class="flex items-center gap-2 w-full sm:w-auto">
+        <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           <button id="btnGoogleAuth" onclick="handleGoogleAuth()" class="flex-1 sm:flex-initial px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-semibold text-xs flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20 transition">
             <i class="fa-brands fa-google"></i> Connect Google Account
           </button>
+          <button onclick="exportIcsFile()" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-medium text-xs flex items-center gap-1.5 transition" title="Export .ics file for instant Google Calendar import">
+            <i class="fa-solid fa-file-export text-emerald-400"></i> Export .ICS
+          </button>
+        </div>
+      </div>
+
+      <!-- Quick Troubleshoot Notice for Error 401 -->
+      <div id="originWarningBox" class="bg-amber-950/40 border border-amber-600/40 rounded-2xl p-4 text-xs text-amber-200 hidden">
+        <div class="flex items-start gap-3">
+          <i class="fa-solid fa-triangle-exclamation text-amber-400 text-lg mt-0.5"></i>
+          <div class="space-y-1">
+            <h4 class="font-bold text-amber-300">Getting Error 401: invalid_client / no registered origin?</h4>
+            <p class="text-amber-200/90 leading-relaxed">
+              Google OAuth requires running this file from a web server (e.g., <code class="bg-amber-900/60 px-1 py-0.5 rounded font-mono">http://localhost:8000</code>) AND registering that URL under <strong>Authorized JavaScript origins</strong> in Google Cloud Console.
+            </p>
+            <div class="pt-1 flex gap-3">
+              <button onclick="openSettingsModal('origin-tab')" class="underline font-bold text-amber-300 hover:text-white">
+                View 3-Step Fix Guide →
+              </button>
+              <button onclick="exportIcsFile()" class="underline font-bold text-emerald-400 hover:text-emerald-300">
+                Or Use Direct ICS Export (No Setup Needed)
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -240,21 +265,38 @@
 
   <!-- Settings Modal -->
   <div id="settingsModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto custom-scrollbar">
       <div class="flex justify-between items-center border-b border-slate-800 pb-3">
         <h3 class="font-bold text-white text-base flex items-center gap-2">
-          <i class="fa-solid fa-sliders text-emerald-400"></i> Settings & Google Credentials
+          <i class="fa-solid fa-sliders text-emerald-400"></i> Settings & Google OAuth Credentials
         </h3>
         <button onclick="closeSettingsModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
       </div>
 
-      <div class="space-y-4 text-xs">
+      <!-- Settings Tabs -->
+      <div class="flex border-b border-slate-800 text-xs font-semibold gap-4">
+        <button id="tabBtnCredentials" onclick="switchModalTab('credentials')" class="pb-2 text-emerald-400 border-b-2 border-emerald-400">
+          API Credentials
+        </button>
+        <button id="tabBtnFix401" onclick="switchModalTab('fix401')" class="pb-2 text-slate-400 hover:text-slate-200">
+          <i class="fa-solid fa-wrench text-amber-400 mr-1"></i> Fix Error 401 Guide
+        </button>
+      </div>
+
+      <!-- TAB 1: Credentials Form -->
+      <div id="tabContentCredentials" class="space-y-4 text-xs">
         <div>
           <label class="block text-slate-300 font-semibold mb-1">Google OAuth Client ID</label>
           <input type="text" id="gcalClientId" placeholder="e.g. 123456789-abc.apps.googleusercontent.com" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none font-mono text-xs">
           <p class="text-[11px] text-slate-400 mt-1">
             Get your Client ID from Google Cloud Console with Google Calendar API enabled.
           </p>
+        </div>
+
+        <div>
+          <label class="block text-slate-300 font-semibold mb-1">Manual Access Token (Optional Fallback)</label>
+          <input type="text" id="gcalManualToken" placeholder="ya29.a0A..." class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none font-mono text-xs">
+          <p class="text-[11px] text-slate-400 mt-1">If OAuth popup is blocked by your school organization (<code class="text-amber-300">@myabcusd.org</code>), you can paste a OAuth OAuth 2.0 Access Token here directly from Google OAuth Playground.</p>
         </div>
 
         <div>
@@ -266,7 +308,7 @@
         <div>
           <label class="block text-slate-300 font-semibold mb-1">Event Title Format</label>
           <select id="eventTitleMode" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none text-xs">
-            <option value="blank">Blank / No Title (as requested)</option>
+            <option value="blank">Blank / No Title (Uncategorized block)</option>
             <option value="default_study">Study Session</option>
             <option value="flowmo">Flowmo Focus Block</option>
           </select>
@@ -283,12 +325,63 @@
         </div>
       </div>
 
+      <!-- TAB 2: Fix Error 401 Guide -->
+      <div id="tabContentFix401" class="space-y-3 text-xs hidden">
+        <div class="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-2">
+          <h4 class="font-bold text-amber-400 flex items-center gap-1.5 text-xs">
+            <i class="fa-solid fa-circle-info"></i> Why "Error 401: invalid_client / no registered origin" happens:
+          </h4>
+          <p class="text-slate-300 leading-relaxed text-[11px]">
+            Google OAuth requires that the URL opening the sign-in prompt matches an exact authorized origin URL configured in your Google Cloud Console.
+          </p>
+        </div>
+
+        <div class="space-y-3">
+          <div class="p-3 bg-slate-950 rounded-xl border border-slate-800">
+            <span class="font-bold text-white text-xs block mb-1">Step 1: Check your Current Origin</span>
+            <p class="text-slate-400 text-[11px]">Your browser is currently running this app on:</p>
+            <code id="currentOriginDisplay" class="block bg-slate-900 p-2 rounded text-emerald-400 font-mono mt-1 text-[11px]">Calculating origin...</code>
+            <p class="text-rose-400 text-[10px] mt-1 hidden" id="fileProtocolWarning">
+              ⚠️ You opened this directly as a local file (<code class="font-mono">file://</code>). Google OAuth does NOT support <code class="font-mono">file://</code>. You must serve it via local web server!
+            </p>
+          </div>
+
+          <div class="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-1">
+            <span class="font-bold text-white text-xs block">Step 2: Run a Simple Local Web Server</span>
+            <p class="text-slate-400 text-[11px]">Run one of these commands in your terminal in the folder containing this file:</p>
+            <div class="bg-slate-900 p-2 rounded text-slate-200 font-mono text-[11px] space-y-1">
+              <div>Python: <span class="text-emerald-400">python -m http.server 8000</span></div>
+              <div>Node/NPX: <span class="text-emerald-400">npx serve .</span></div>
+            </div>
+            <p class="text-slate-400 text-[11px] pt-1">Then open <code class="text-emerald-300">http://localhost:8000/flowmo_gcal_sync.html</code> in your browser.</p>
+          </div>
+
+          <div class="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-1">
+            <span class="font-bold text-white text-xs block">Step 3: Add Authorized Origin in Google Cloud</span>
+            <ol class="list-decimal list-inside text-slate-300 text-[11px] space-y-1">
+              <li>Go to <a href="https://console.cloud.google.com/apis/credentials" target="_blank" class="text-blue-400 underline">Google Cloud Console → Credentials</a>.</li>
+              <li>Click your <strong>OAuth 2.0 Client ID</strong> (Web application).</li>
+              <li>Under <strong>Authorized JavaScript origins</strong>, click <em>+ ADD URI</em>.</li>
+              <li>Paste: <code id="originCopySnippet" class="bg-slate-900 px-1 py-0.5 text-emerald-300 rounded font-mono">http://localhost:8000</code></li>
+              <li>Save changes (can take 2-5 mins to take effect).</li>
+            </ol>
+          </div>
+
+          <div class="p-3 bg-slate-950 rounded-xl border border-amber-600/30 bg-amber-950/20 space-y-1">
+            <span class="font-bold text-amber-300 text-xs block"><i class="fa-solid fa-graduation-cap mr-1"></i> School / Workspace Account Note (@myabcusd.org)</span>
+            <p class="text-amber-200/90 text-[11px] leading-relaxed">
+              If your school organization restricts unverified OAuth apps, click <strong>Export .ICS</strong> on the dashboard to import study blocks into Google Calendar without needing Google Cloud authorization!
+            </p>
+          </div>
+        </div>
+      </div>
+
       <div class="flex gap-2 pt-2 border-t border-slate-800">
         <button onclick="saveSettings()" class="flex-1 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-xs transition">
           Save Settings
         </button>
         <button onclick="closeSettingsModal()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-medium text-xs transition">
-          Cancel
+          Close
         </button>
       </div>
     </div>
@@ -300,7 +393,7 @@
       gcal: {
         clientId: localStorage.getItem('flowmo_gcal_client_id') || '',
         calendarId: localStorage.getItem('flowmo_gcal_calendar_id') || 'primary',
-        accessToken: null,
+        accessToken: localStorage.getItem('flowmo_gcal_manual_token') || null,
         userEmail: null,
         tokenClient: null
       },
@@ -335,7 +428,46 @@
       renderLogs();
       setupGoogleAuthClient();
       updateStatusDisplay();
+      checkOriginEnvironment();
     });
+
+    function checkOriginEnvironment() {
+      const origin = window.location.origin;
+      const display = document.getElementById('currentOriginDisplay');
+      const snippet = document.getElementById('originCopySnippet');
+      const fileWarn = document.getElementById('fileProtocolWarning');
+      const originBox = document.getElementById('originWarningBox');
+
+      if (window.location.protocol === 'file:') {
+        display.innerText = 'file:// (Local File System)';
+        snippet.innerText = 'http://localhost:8000';
+        fileWarn.classList.remove('hidden');
+        originBox.classList.remove('hidden');
+      } else {
+        display.innerText = origin;
+        snippet.innerText = origin;
+        fileWarn.classList.add('hidden');
+      }
+    }
+
+    function switchModalTab(tab) {
+      const btnCreds = document.getElementById('tabBtnCredentials');
+      const btnFix = document.getElementById('tabBtnFix401');
+      const contentCreds = document.getElementById('tabContentCredentials');
+      const contentFix = document.getElementById('tabContentFix401');
+
+      if (tab === 'fix401') {
+        btnCreds.className = "pb-2 text-slate-400 hover:text-slate-200";
+        btnFix.className = "pb-2 text-emerald-400 border-b-2 border-emerald-400";
+        contentCreds.classList.add('hidden');
+        contentFix.classList.remove('hidden');
+      } else {
+        btnFix.className = "pb-2 text-slate-400 hover:text-slate-200";
+        btnCreds.className = "pb-2 text-emerald-400 border-b-2 border-emerald-400";
+        contentFix.classList.add('hidden');
+        contentCreds.classList.remove('hidden');
+      }
+    }
 
     function handleStateTransition(newState) {
       if (state.session.currentState === newState) return;
@@ -501,7 +633,8 @@
           <div class="flex items-center gap-2">
             ${block.synced 
               ? `<span class="px-2 py-1 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold">Synced</span>`
-              : `<button onclick="manualSyncBlock('${block.id}')" class="px-2.5 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white font-medium text-[11px] transition">Sync Now</button>`
+              : `<button onclick="manualSyncBlock('${block.id}')" class="px-2.5 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white font-medium text-[11px] transition">Sync GCal</button>
+                 <button onclick="createGCalWebLink('${block.id}')" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-[11px] transition" title="Add manually via GCal web link"><i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i></button>`
             }
           </div>
         `;
@@ -529,24 +662,50 @@
       }
 
       if (window.google && window.google.accounts && window.google.accounts.oauth2) {
-        state.gcal.tokenClient = google.accounts.oauth2.initTokenClient({
-          client_id: state.gcal.clientId,
-          scope: 'https://www.googleapis.com/auth/calendar.events',
-          callback: (response) => {
-            if (response.access_token) {
-              state.gcal.accessToken = response.access_token;
-              updateStatusDisplay();
-              showToast('Successfully connected to Google Calendar!');
+        try {
+          state.gcal.tokenClient = google.accounts.oauth2.initTokenClient({
+            client_id: state.gcal.clientId,
+            scope: 'https://www.googleapis.com/auth/calendar.events',
+            callback: (response) => {
+              if (response.error) {
+                console.error('Google OAuth Error:', response);
+                showToast(`OAuth Error: ${response.error_description || response.error}`, 'error');
+                document.getElementById('originWarningBox').classList.remove('hidden');
+                openSettingsModal('fix401');
+                return;
+              }
+              if (response.access_token) {
+                state.gcal.accessToken = response.access_token;
+                localStorage.setItem('flowmo_gcal_manual_token', response.access_token);
+                updateStatusDisplay();
+                showToast('Successfully connected to Google Calendar!');
+              }
+            },
+            error_callback: (err) => {
+              console.error('OAuth Client Init Error:', err);
+              document.getElementById('originWarningBox').classList.remove('hidden');
+              showToast('Error 401: Invalid Client or No Registered Origin. Click "Fix Error Setup" for guidance.', 'error');
             }
-          },
-        });
+          });
+        } catch(e) {
+          console.error("Token client setup failed", e);
+        }
       }
     }
 
     function handleGoogleAuth() {
+      if (state.gcal.accessToken) {
+        showToast('Google Calendar is already connected!');
+        return;
+      }
       if (!state.gcal.clientId) {
         openSettingsModal();
         showToast('Please enter your Google OAuth Client ID first.', 'warning');
+        return;
+      }
+      if (window.location.protocol === 'file:') {
+        openSettingsModal('fix401');
+        showToast('Google OAuth does not support file:// protocol. Read the Fix Guide.', 'error');
         return;
       }
       if (!state.gcal.tokenClient) {
@@ -554,12 +713,14 @@
       }
       if (state.gcal.tokenClient) {
         state.gcal.tokenClient.requestAccessToken();
+      } else {
+        openSettingsModal('fix401');
       }
     }
 
     function syncBlockToGoogleCalendar(block) {
       if (!state.gcal.accessToken) {
-        showToast('Google Calendar not connected. Click "Connect Google Account".', 'warning');
+        showToast('Google Calendar not connected. Click "Connect Google Account" or set Manual Token in settings.', 'warning');
         return;
       }
 
@@ -596,6 +757,11 @@
           showToast('Blank study block created on Google Calendar!');
         } else {
           showToast('Failed to create GCal event: ' + (data.error?.message || 'Unknown error'), 'error');
+          if (data.error?.code === 401) {
+            state.gcal.accessToken = null;
+            localStorage.removeItem('flowmo_gcal_manual_token');
+            updateStatusDisplay();
+          }
         }
       })
       .catch(err => {
@@ -611,6 +777,59 @@
       }
     }
 
+    function createGCalWebLink(blockId) {
+      const block = state.blocks.find(b => b.id === blockId);
+      if (!block) return;
+
+      const formatGCalTime = (iso) => new Date(iso).toISOString().replace(/-|:|\.\d\d\d/g, "");
+      const start = formatGCalTime(block.startTime);
+      const end = formatGCalTime(block.endTime);
+      const title = encodeURIComponent(block.title);
+      const details = encodeURIComponent("Flowmo Active Study Session Block");
+
+      const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${start}/${end}&details=${details}`;
+      window.open(url, '_blank');
+    }
+
+    function exportIcsFile() {
+      if (state.blocks.length === 0) {
+        showToast('No logged study sessions to export!', 'warning');
+        return;
+      }
+
+      let icsContent = [
+        'BEGIN:VCALENDAR',
+        'VERSION:2.0',
+        'PRODID:-//Flowmo GCal Sync//EN',
+        'CALSCALE:GREGORIAN'
+      ];
+
+      const formatIcsTime = (iso) => new Date(iso).toISOString().replace(/-|:|\.\d\d\d/g, "");
+
+      state.blocks.forEach(block => {
+        icsContent.push('BEGIN:VEVENT');
+        icsContent.push(`UID:${block.id}@flowmosync`);
+        icsContent.push(`DTSTAMP:${formatIcsTime(block.createdAt || block.startTime)}`);
+        icsContent.push(`DTSTART:${formatIcsTime(block.startTime)}`);
+        icsContent.push(`DTEND:${formatIcsTime(block.endTime)}`);
+        icsContent.push(`SUMMARY:${block.title}`);
+        icsContent.push('DESCRIPTION:Flowmo Active Focus Block');
+        icsContent.push('END:VEVENT');
+      });
+
+      icsContent.push('END:VCALENDAR');
+
+      const blob = new Blob([icsContent.join('\r\n')], { type: 'text/calendar;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `flowmo_study_blocks_${new Date().toISOString().slice(0,10)}.ics`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      showToast('Exported .ICS file! You can import this into Google Calendar.');
+    }
+
     function updateStatusDisplay() {
       const dot = document.getElementById('gcalStatusDot');
       const text = document.getElementById('gcalStatusText');
@@ -623,11 +842,18 @@
       } else {
         dot.className = "h-2 w-2 rounded-full bg-red-500";
         text.innerText = state.gcal.clientId ? "Auth Required" : "Setup Needed";
+        document.getElementById('btnGoogleAuth').innerHTML = `<i class="fa-brands fa-google"></i> Connect Google Account`;
+        document.getElementById('btnGoogleAuth').className = "flex-1 sm:flex-initial px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-semibold text-xs flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20 transition";
       }
     }
 
-    function openSettingsModal() {
+    function openSettingsModal(defaultTab = 'credentials') {
       document.getElementById('settingsModal').classList.remove('hidden');
+      if (defaultTab === 'fix401') {
+        switchModalTab('fix401');
+      } else {
+        switchModalTab('credentials');
+      }
     }
 
     function closeSettingsModal() {
@@ -636,6 +862,7 @@
 
     function loadSettingsToModal() {
       document.getElementById('gcalClientId').value = state.gcal.clientId;
+      document.getElementById('gcalManualToken').value = localStorage.getItem('flowmo_gcal_manual_token') || '';
       document.getElementById('gcalCalendarId').value = state.gcal.calendarId;
       document.getElementById('eventTitleMode').value = state.settings.eventTitleMode;
       document.getElementById('autoSyncToggle').checked = state.settings.autoSync;
@@ -643,9 +870,15 @@
 
     function saveSettings() {
       state.gcal.clientId = document.getElementById('gcalClientId').value.trim();
+      const manualToken = document.getElementById('gcalManualToken').value.trim();
       state.gcal.calendarId = document.getElementById('gcalCalendarId').value.trim() || 'primary';
       state.settings.eventTitleMode = document.getElementById('eventTitleMode').value;
       state.settings.autoSync = document.getElementById('autoSyncToggle').checked;
+
+      if (manualToken) {
+        state.gcal.accessToken = manualToken;
+        localStorage.setItem('flowmo_gcal_manual_token', manualToken);
+      }
 
       localStorage.setItem('flowmo_gcal_client_id', state.gcal.clientId);
       localStorage.setItem('flowmo_gcal_calendar_id', state.gcal.calendarId);
