@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-900 text-slate-100">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Flowmo to Google Calendar Auto Sync</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f0fdf4',
+              500: '#22c55e',
+              600: '#16a34a',
+              700: '#15803d',
+              900: '#14532d',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="https://apis.google.com/js/api.js" async defer></script>
+  <style>
+    .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: #0f172a; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+    .pulse-ring {
+      box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7);
+      animation: pulse-green 2s infinite;
+    }
+    @keyframes pulse-green {
+      0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
+      70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(34, 197, 94, 0); }
+      100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+    }
+  </style>
+</head>
+<body class="h-full font-sans antialiased overflow-x-hidden flex flex-col">
+
+  <header class="border-b border-slate-800 bg-slate-950/80 backdrop-blur sticky top-0 z-40 px-6 py-4">
+    <div class="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+      <div class="flex items-center space-x-3">
+        <div class="h-10 w-10 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center text-slate-950 font-black text-xl shadow-lg shadow-emerald-500/20">
+          <i class="fa-solid fa-arrows-rotate"></i>
+        </div>
+        <div>
+          <h1 class="text-lg font-bold text-white tracking-tight flex items-center gap-2">
+            Flowmo <i class="fa-solid fa-arrow-right text-xs text-slate-500"></i> Google Calendar
+            <span class="text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Active Sync Engine</span>
+          </h1>
+          <p class="text-xs text-slate-400">Creates blank GCal blocks strictly for active focus intervals</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <!-- Flowmo Bridge Status -->
+        <div id="flowmoStatusBadge" class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs text-slate-400">
+          <span id="flowmoStatusDot" class="h-2 w-2 rounded-full bg-amber-500"></span>
+          <span>Flowmo: <strong id="flowmoStatusText" class="text-slate-200">Waiting for Bridge</strong></span>
+        </div>
+
+        <!-- Google Calendar Status -->
+        <div id="gcalStatusBadge" class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs text-slate-400">
+          <span id="gcalStatusDot" class="h-2 w-2 rounded-full bg-red-500"></span>
+          <span>Google Calendar: <strong id="gcalStatusText" class="text-slate-200">Disconnected</strong></span>
+        </div>
+
+        <button onclick="openSettingsModal()" class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition text-sm" title="Google API Settings">
+          <i class="fa-solid fa-gear"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+    <!-- LEFT COLUMN: Real-Time Flowmo Session Control & Snippet Setup -->
+    <div class="lg:col-span-5 space-y-6">
+
+      <!-- Real-Time Session Tracker Card -->
+      <div class="bg-slate-950/60 border border-slate-800 rounded-2xl p-6 shadow-xl relative overflow-hidden">
+        <div class="flex justify-between items-start mb-4">
+          <div>
+            <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-400">Live Tracker</h2>
+            <p class="text-2xl font-black text-white mt-1" id="sessionTimerDisplay">00:00:00</p>
+          </div>
+          <span id="sessionStatePill" class="px-3 py-1 rounded-full text-xs font-bold bg-slate-800 text-slate-400 uppercase tracking-wider">
+            IDLE
+          </span>
+        </div>
+
+        <!-- Progress Visualizer -->
+        <div class="w-full bg-slate-900 rounded-full h-2 mb-6 overflow-hidden border border-slate-800">
+          <div id="activeProgressFill" class="bg-emerald-500 h-full w-0 transition-all duration-300"></div>
+        </div>
+
+        <!-- Active Block Info -->
+        <div class="bg-slate-900/80 rounded-xl p-4 border border-slate-800/80 space-y-2 mb-6">
+          <div class="flex justify-between text-xs">
+            <span class="text-slate-400">Current Active Block Start:</span>
+            <span id="blockStartTime" class="text-slate-200 font-mono">--:--:--</span>
+          </div>
+          <div class="flex justify-between text-xs">
+            <span class="text-slate-400">Pause / Bathroom Stops Logged:</span>
+            <span id="pauseCount" class="text-amber-400 font-semibold">0 breaks</span>
+          </div>
+          <div class="flex justify-between text-xs">
+            <span class="text-slate-400">Auto-Create GCal Event:</span>
+            <span class="text-emerald-400 font-semibold"><i class="fa-solid fa-check text-xs mr-1"></i> Blank Block On Pause/Stop</span>
+          </div>
+        </div>
+
+        <!-- Manual Simulation & Controls (for direct testing) -->
+        <div class="border-t border-slate-800/80 pt-4">
+          <p class="text-xs text-slate-400 mb-3 font-medium">Manual Session Controls (Or Sync automatically via Flowmo):</p>
+          <div class="grid grid-cols-3 gap-2">
+            <button id="btnStart" onclick="manualStartSession()" class="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-semibold text-xs flex items-center justify-center gap-1.5 transition">
+              <i class="fa-solid fa-play"></i> Start Active
+            </button>
+            <button id="btnPause" onclick="manualPauseSession()" class="px-3 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg font-semibold text-xs flex items-center justify-center gap-1.5 transition">
+              <i class="fa-solid fa-pause"></i> Pause/Bathroom
+            </button>
+            <button id="btnStop" onclick="manualStopSession()" class="px-3 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg font-semibold text-xs flex items-center justify-center gap-1.5 transition">
+              <i class="fa-solid fa-stop"></i> End & Sync
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Flowmo Bridge Helper / Integration Code -->
+      <div class="bg-slate-950/60 border border-slate-800 rounded-2xl p-6 shadow-xl">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-sm font-semibold text-white flex items-center gap-2">
+            <i class="fa-solid fa-plug text-emerald-400"></i> Connect app.flowmo.io
+          </h3>
+          <button onclick="copyBridgeSnippet()" class="text-xs bg-slate-800 hover:bg-slate-700 text-emerald-400 px-2.5 py-1 rounded border border-slate-700 flex items-center gap-1 transition">
+            <i class="fa-solid fa-copy"></i> <span id="copyBtnText">Copy Snippet</span>
+          </button>
+        </div>
+        <p class="text-xs text-slate-400 mb-3">
+          To auto-detect start, pause (bathroom breaks), and break times directly from <code class="bg-slate-900 px-1 py-0.5 rounded text-emerald-300">app.flowmo.io</code>, copy and run this simple listener in your browser console on the Flowmo tab:
+        </p>
+        <pre class="bg-slate-900 p-3 rounded-lg border border-slate-800 text-[11px] font-mono text-slate-300 overflow-x-auto custom-scrollbar max-h-40 leading-relaxed"><code id="bridgeCodeBlock">// Paste in app.flowmo.io Developer Console (F12)
+(function() {
+  const channel = new BroadcastChannel('flowmo_gcal_sync');
+  console.log('✅ Flowmo GCal Sync Bridge Attached!');
+  
+  let lastState = '';
+  setInterval(() => {
+    // Detect flowmo timer buttons state
+    const playBtn = document.querySelector('button[aria-label*="Start"], button[aria-label*="Play"], .timer-play-btn');
+    const pauseBtn = document.querySelector('button[aria-label*="Pause"], .timer-pause-btn');
+    const isPaused = document.body.innerText.includes('Paused') || (playBtn && !pauseBtn);
+    const isWorking = !!pauseBtn || document.body.innerText.includes('Focusing');
+
+    let state = 'IDLE';
+    if (isWorking) state = 'ACTIVE';
+    else if (isPaused) state = 'PAUSED';
+
+    if (state !== lastState) {
+      lastState = state;
+      channel.postMessage({ type: 'FLOWMO_STATE_CHANGE', state: state, timestamp: Date.now() });
+      console.log('⚡ Flowmo State Broadcasted:', state);
+    }
+  }, 1000);
+})();</code></pre>
+        <div class="mt-3 flex items-center justify-between text-xs text-slate-400">
+          <span>Status: <span id="channelStatus" class="text-emerald-400 font-medium">Listening on BroadcastChannel</span></span>
+          <button onclick="testBroadcast()" class="text-xs text-slate-400 hover:text-white underline">Send Test Ping</button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- RIGHT COLUMN: Sync Queue & Google Calendar Logs -->
+    <div class="lg:col-span-7 space-y-6">
+
+      <!-- Google Calendar Sync Configuration Bar -->
+      <div class="bg-slate-950/60 border border-slate-800 rounded-2xl p-6 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
+          <h3 class="text-sm font-semibold text-white flex items-center gap-2">
+            <i class="fa-brands fa-google text-blue-400"></i> Google Calendar Destination
+          </h3>
+          <p class="text-xs text-slate-400 mt-0.5" id="calendarNameDisplay">Target Calendar: Primary (Default)</p>
+        </div>
+
+        <div class="flex items-center gap-2 w-full sm:w-auto">
+          <button id="btnGoogleAuth" onclick="handleGoogleAuth()" class="flex-1 sm:flex-initial px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-semibold text-xs flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20 transition">
+            <i class="fa-brands fa-google"></i> Connect Google Account
+          </button>
+        </div>
+      </div>
+
+      <!-- Active Sessions Log & GCal Push Queue -->
+      <div class="bg-slate-950/60 border border-slate-800 rounded-2xl p-6 shadow-xl flex flex-col h-[520px]">
+        <div class="flex items-center justify-between pb-4 border-b border-slate-800 mb-4">
+          <div>
+            <h3 class="text-sm font-semibold text-white flex items-center gap-2">
+              <i class="fa-solid fa-list-check text-emerald-400"></i> Active Focus Sessions Log
+            </h3>
+            <p class="text-xs text-slate-400">Only non-paused, non-break active study periods are synced as blank events.</p>
+          </div>
+          <button onclick="clearCompletedLogs()" class="text-xs text-slate-400 hover:text-rose-400 transition">
+            <i class="fa-solid fa-trash-can mr-1"></i> Clear Log
+          </button>
+        </div>
+
+        <!-- Session List Container -->
+        <div class="flex-1 overflow-y-auto custom-scrollbar space-y-3 pr-1" id="sessionLogsContainer">
+          <!-- Empty state placeholder -->
+          <div id="emptyLogState" class="h-full flex flex-col items-center justify-center text-center p-8 text-slate-500">
+            <i class="fa-regular fa-calendar-minus text-4xl mb-3 opacity-40"></i>
+            <p class="text-sm font-medium">No study sessions logged yet</p>
+            <p class="text-xs max-w-xs mt-1 text-slate-500">
+              Start a timer on Flowmo or click "Start Active" above. When you pause or take a break, your active study time will be posted to Google Calendar as a blank block.
+            </p>
+          </div>
+        </div>
+
+        <!-- Table Summary Footer -->
+        <div class="pt-4 border-t border-slate-800 mt-auto flex items-center justify-between text-xs text-slate-400">
+          <div>
+            Total Active Focus: <strong id="totalActiveTime" class="text-emerald-400 font-mono">0m</strong>
+          </div>
+          <div>
+            Synced Events: <strong id="syncedCount" class="text-slate-200">0</strong>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- Settings Modal -->
+  <div id="settingsModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5">
+      <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+        <h3 class="font-bold text-white text-base flex items-center gap-2">
+          <i class="fa-solid fa-sliders text-emerald-400"></i> Settings & Google Credentials
+        </h3>
+        <button onclick="closeSettingsModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+      </div>
+
+      <div class="space-y-4 text-xs">
+        <div>
+          <label class="block text-slate-300 font-semibold mb-1">Google OAuth Client ID</label>
+          <input type="text" id="gcalClientId" placeholder="e.g. 123456789-abc.apps.googleusercontent.com" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none font-mono text-xs">
+          <p class="text-[11px] text-slate-400 mt-1">
+            Get your Client ID from Google Cloud Console with Google Calendar API enabled.
+          </p>
+        </div>
+
+        <div>
+          <label class="block text-slate-300 font-semibold mb-1">Google Calendar ID</label>
+          <input type="text" id="gcalCalendarId" value="primary" placeholder="primary" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none font-mono text-xs">
+          <p class="text-[11px] text-slate-400 mt-1">Use <code class="text-emerald-300">primary</code> for your main calendar or paste a specific calendar ID.</p>
+        </div>
+
+        <div>
+          <label class="block text-slate-300 font-semibold mb-1">Event Title Format</label>
+          <select id="eventTitleMode" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:border-emerald-500 focus:outline-none text-xs">
+            <option value="blank">Blank / No Title (as requested)</option>
+            <option value="default_study">Study Session</option>
+            <option value="flowmo">Flowmo Focus Block</option>
+          </select>
+          <p class="text-[11px] text-slate-400 mt-1">
+            Choosing "Blank" leaves the summary empty on Google Calendar so it displays as an uncategorized blank block.
+          </p>
+        </div>
+
+        <div class="bg-slate-950 p-3 rounded-xl border border-slate-800/80">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" id="autoSyncToggle" checked class="rounded border-slate-700 bg-slate-900 text-emerald-500 focus:ring-emerald-500">
+            <span class="text-slate-200 font-medium">Auto-Sync immediately when active block stops</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="flex gap-2 pt-2 border-t border-slate-800">
+        <button onclick="saveSettings()" class="flex-1 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-xs transition">
+          Save Settings
+        </button>
+        <button onclick="closeSettingsModal()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-medium text-xs transition">
+          Cancel
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Global Application State
+    const state = {
+      gcal: {
+        clientId: localStorage.getItem('flowmo_gcal_client_id') || '',
+        calendarId: localStorage.getItem('flowmo_gcal_calendar_id') || 'primary',
+        accessToken: null,
+        userEmail: null,
+        tokenClient: null
+      },
+      settings: {
+        eventTitleMode: localStorage.getItem('flowmo_event_title_mode') || 'blank',
+        autoSync: localStorage.getItem('flowmo_auto_sync') !== 'false'
+      },
+      session: {
+        currentState: 'IDLE', // 'IDLE', 'ACTIVE', 'PAUSED'
+        currentSegmentStart: null,
+        totalActiveMs: 0,
+        pauseCount: 0,
+        timerInterval: null
+      },
+      blocks: JSON.parse(localStorage.getItem('flowmo_synced_blocks') || '[]')
+    };
+
+    // BroadcastChannel for live syncing with app.flowmo.io browser tab
+    const flowmoChannel = new BroadcastChannel('flowmo_gcal_sync');
+
+    flowmoChannel.onmessage = (event) => {
+      console.log('Received message from Flowmo Tab:', event.data);
+      if (event.data && event.data.type === 'FLOWMO_STATE_CHANGE') {
+        const newState = event.data.state;
+        handleStateTransition(newState);
+      }
+    };
+
+    // Initialize UI on Load
+    document.addEventListener('DOMContentLoaded', () => {
+      loadSettingsToModal();
+      renderLogs();
+      setupGoogleAuthClient();
+      updateStatusDisplay();
+    });
+
+    function handleStateTransition(newState) {
+      if (state.session.currentState === newState) return;
+
+      const now = new Date();
+
+      // IF transitioning FROM ACTIVE -> (PAUSED or IDLE)
+      if (state.session.currentState === 'ACTIVE' && (newState === 'PAUSED' || newState === 'IDLE')) {
+        // End current active study block!
+        if (state.session.currentSegmentStart) {
+          const endTime = now;
+          const durationMs = endTime.getTime() - state.session.currentSegmentStart.getTime();
+
+          // Only create block if duration is at least 15 seconds (prevents accidental misclicks)
+          if (durationMs > 15000) {
+            recordActiveBlock(state.session.currentSegmentStart, endTime);
+          }
+        }
+        state.session.currentSegmentStart = null;
+        if (newState === 'PAUSED') {
+          state.session.pauseCount++;
+        }
+      }
+
+      // IF transitioning TO ACTIVE (from PAUSED or IDLE)
+      if (newState === 'ACTIVE') {
+        state.session.currentSegmentStart = now;
+        document.getElementById('blockStartTime').innerText = now.toLocaleTimeString();
+      }
+
+      state.session.currentState = newState;
+      updateSessionUI();
+    }
+
+    function manualStartSession() {
+      handleStateTransition('ACTIVE');
+      startTimerLoop();
+    }
+
+    function manualPauseSession() {
+      handleStateTransition('PAUSED');
+      stopTimerLoop();
+    }
+
+    function manualStopSession() {
+      handleStateTransition('IDLE');
+      stopTimerLoop();
+    }
+
+    function startTimerLoop() {
+      if (state.session.timerInterval) clearInterval(state.session.timerInterval);
+      state.session.timerInterval = setInterval(() => {
+        if (state.session.currentState === 'ACTIVE' && state.session.currentSegmentStart) {
+          const elapsedMs = Date.now() - state.session.currentSegmentStart.getTime();
+          document.getElementById('sessionTimerDisplay').innerText = formatMs(elapsedMs);
+          document.getElementById('activeProgressFill').style.width = Math.min(100, (elapsedMs / 3600000) * 100) + '%';
+        }
+      }, 1000);
+    }
+
+    function stopTimerLoop() {
+      if (state.session.timerInterval) {
+        clearInterval(state.session.timerInterval);
+        state.session.timerInterval = null;
+      }
+    }
+
+    function updateSessionUI() {
+      const pill = document.getElementById('sessionStatePill');
+      const statusDot = document.getElementById('flowmoStatusDot');
+      const statusText = document.getElementById('flowmoStatusText');
+
+      pill.innerText = state.session.currentState;
+      document.getElementById('pauseCount').innerText = `${state.session.pauseCount} pause(s)`;
+
+      if (state.session.currentState === 'ACTIVE') {
+        pill.className = "px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 uppercase tracking-wider pulse-ring";
+        statusDot.className = "h-2 w-2 rounded-full bg-emerald-500";
+        statusText.innerText = "Actively Studying";
+      } else if (state.session.currentState === 'PAUSED') {
+        pill.className = "px-3 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 uppercase tracking-wider";
+        statusDot.className = "h-2 w-2 rounded-full bg-amber-500";
+        statusText.innerText = "Paused / On Break";
+      } else {
+        pill.className = "px-3 py-1 rounded-full text-xs font-bold bg-slate-800 text-slate-400 uppercase tracking-wider";
+        statusDot.className = "h-2 w-2 rounded-full bg-slate-500";
+        statusText.innerText = "Idle";
+      }
+    }
+
+    function recordActiveBlock(startTime, endTime) {
+      const durationMs = endTime.getTime() - startTime.getTime();
+      
+      let title = ""; // Default blank as requested
+      if (state.settings.eventTitleMode === 'default_study') title = "Study Session";
+      else if (state.settings.eventTitleMode === 'flowmo') title = "Flowmo Focus";
+
+      const newBlock = {
+        id: 'block_' + Date.now(),
+        startTime: startTime.toISOString(),
+        endTime: endTime.toISOString(),
+        durationMinutes: Math.round(durationMs / 60000),
+        title: title,
+        synced: false,
+        gcalEventId: null,
+        createdAt: new Date().toISOString()
+      };
+
+      state.blocks.unshift(newBlock);
+      saveBlocks();
+      renderLogs();
+
+      // Trigger automatic Google Calendar sync if connected and enabled
+      if (state.settings.autoSync) {
+        syncBlockToGoogleCalendar(newBlock);
+      }
+    }
+
+    function renderLogs() {
+      const container = document.getElementById('sessionLogsContainer');
+      const emptyState = document.getElementById('emptyLogState');
+
+      if (state.blocks.length === 0) {
+        emptyState.classList.remove('hidden');
+        container.innerHTML = '';
+        container.appendChild(emptyState);
+        document.getElementById('totalActiveTime').innerText = '0m';
+        document.getElementById('syncedCount').innerText = '0';
+        return;
+      }
+
+      emptyState.classList.add('hidden');
+      container.innerHTML = '';
+
+      let totalMinutes = 0;
+      let syncedCounter = 0;
+
+      state.blocks.forEach(block => {
+        totalMinutes += block.durationMinutes;
+        if (block.synced) syncedCounter++;
+
+        const startFormatted = new Date(block.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const endFormatted = new Date(block.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const dateFormatted = new Date(block.startTime).toLocaleDateString();
+
+        const item = document.createElement('div');
+        item.className = "bg-slate-900 border border-slate-800/80 rounded-xl p-3.5 flex items-center justify-between text-xs hover:border-slate-700 transition";
+        item.innerHTML = `
+          <div class="flex items-center gap-3">
+            <div class="h-8 w-8 rounded-lg ${block.synced ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'} flex items-center justify-center font-bold">
+              <i class="fa-solid ${block.synced ? 'fa-calendar-check' : 'fa-clock'}"></i>
+            </div>
+            <div>
+              <div class="font-semibold text-slate-200 flex items-center gap-2">
+                ${block.title === "" ? '<span class="italic text-slate-400">[Blank Event Block]</span>' : block.title}
+                <span class="text-[10px] text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded">${block.durationMinutes} min</span>
+              </div>
+              <div class="text-[11px] text-slate-400 mt-0.5 font-mono">
+                ${dateFormatted} • ${startFormatted} → ${endFormatted}
+              </div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            ${block.synced 
+              ? `<span class="px-2 py-1 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold">Synced</span>`
+              : `<button onclick="manualSyncBlock('${block.id}')" class="px-2.5 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white font-medium text-[11px] transition">Sync Now</button>`
+            }
+          </div>
+        `;
+        container.appendChild(item);
+      });
+
+      document.getElementById('totalActiveTime').innerText = `${totalMinutes}m`;
+      document.getElementById('syncedCount').innerText = `${syncedCounter}`;
+    }
+
+    function saveBlocks() {
+      localStorage.setItem('flowmo_synced_blocks', JSON.stringify(state.blocks));
+    }
+
+    function clearCompletedLogs() {
+      state.blocks = [];
+      saveBlocks();
+      renderLogs();
+    }
+
+    function setupGoogleAuthClient() {
+      if (!state.gcal.clientId) {
+        updateStatusDisplay();
+        return;
+      }
+
+      if (window.google && window.google.accounts && window.google.accounts.oauth2) {
+        state.gcal.tokenClient = google.accounts.oauth2.initTokenClient({
+          client_id: state.gcal.clientId,
+          scope: 'https://www.googleapis.com/auth/calendar.events',
+          callback: (response) => {
+            if (response.access_token) {
+              state.gcal.accessToken = response.access_token;
+              updateStatusDisplay();
+              showToast('Successfully connected to Google Calendar!');
+            }
+          },
+        });
+      }
+    }
+
+    function handleGoogleAuth() {
+      if (!state.gcal.clientId) {
+        openSettingsModal();
+        showToast('Please enter your Google OAuth Client ID first.', 'warning');
+        return;
+      }
+      if (!state.gcal.tokenClient) {
+        setupGoogleAuthClient();
+      }
+      if (state.gcal.tokenClient) {
+        state.gcal.tokenClient.requestAccessToken();
+      }
+    }
+
+    function syncBlockToGoogleCalendar(block) {
+      if (!state.gcal.accessToken) {
+        showToast('Google Calendar not connected. Click "Connect Google Account".', 'warning');
+        return;
+      }
+
+      const eventPayload = {
+        summary: block.title, // Blank string or title
+        description: 'Auto-created from app.flowmo.io focus active study session.',
+        start: {
+          dateTime: block.startTime,
+          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+        },
+        end: {
+          dateTime: block.endTime,
+          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+        }
+      };
+
+      const targetCalendar = encodeURIComponent(state.gcal.calendarId || 'primary');
+
+      fetch(`https://www.googleapis.com/calendar/v3/calendars/${targetCalendar}/events`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${state.gcal.accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(eventPayload)
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.id) {
+          block.synced = true;
+          block.gcalEventId = data.id;
+          saveBlocks();
+          renderLogs();
+          showToast('Blank study block created on Google Calendar!');
+        } else {
+          showToast('Failed to create GCal event: ' + (data.error?.message || 'Unknown error'), 'error');
+        }
+      })
+      .catch(err => {
+        console.error('Google Calendar Sync Error:', err);
+        showToast('API Connection Error during sync.', 'error');
+      });
+    }
+
+    function manualSyncBlock(blockId) {
+      const block = state.blocks.find(b => b.id === blockId);
+      if (block) {
+        syncBlockToGoogleCalendar(block);
+      }
+    }
+
+    function updateStatusDisplay() {
+      const dot = document.getElementById('gcalStatusDot');
+      const text = document.getElementById('gcalStatusText');
+
+      if (state.gcal.accessToken) {
+        dot.className = "h-2 w-2 rounded-full bg-emerald-500";
+        text.innerText = "Connected";
+        document.getElementById('btnGoogleAuth').innerHTML = `<i class="fa-solid fa-check mr-1"></i> Connected to GCal`;
+        document.getElementById('btnGoogleAuth').className = "flex-1 sm:flex-initial px-4 py-2 bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 rounded-xl font-semibold text-xs flex items-center justify-center gap-2";
+      } else {
+        dot.className = "h-2 w-2 rounded-full bg-red-500";
+        text.innerText = state.gcal.clientId ? "Auth Required" : "Setup Needed";
+      }
+    }
+
+    function openSettingsModal() {
+      document.getElementById('settingsModal').classList.remove('hidden');
+    }
+
+    function closeSettingsModal() {
+      document.getElementById('settingsModal').classList.add('hidden');
+    }
+
+    function loadSettingsToModal() {
+      document.getElementById('gcalClientId').value = state.gcal.clientId;
+      document.getElementById('gcalCalendarId').value = state.gcal.calendarId;
+      document.getElementById('eventTitleMode').value = state.settings.eventTitleMode;
+      document.getElementById('autoSyncToggle').checked = state.settings.autoSync;
+    }
+
+    function saveSettings() {
+      state.gcal.clientId = document.getElementById('gcalClientId').value.trim();
+      state.gcal.calendarId = document.getElementById('gcalCalendarId').value.trim() || 'primary';
+      state.settings.eventTitleMode = document.getElementById('eventTitleMode').value;
+      state.settings.autoSync = document.getElementById('autoSyncToggle').checked;
+
+      localStorage.setItem('flowmo_gcal_client_id', state.gcal.clientId);
+      localStorage.setItem('flowmo_gcal_calendar_id', state.gcal.calendarId);
+      localStorage.setItem('flowmo_event_title_mode', state.settings.eventTitleMode);
+      localStorage.setItem('flowmo_auto_sync', state.settings.autoSync);
+
+      document.getElementById('calendarNameDisplay').innerText = `Target Calendar: ${state.gcal.calendarId}`;
+      setupGoogleAuthClient();
+      updateStatusDisplay();
+      closeSettingsModal();
+      showToast('Settings saved!');
+    }
+
+    function copyBridgeSnippet() {
+      const code = document.getElementById('bridgeCodeBlock').innerText;
+      navigator.clipboard.writeText(code).then(() => {
+        const btnText = document.getElementById('copyBtnText');
+        btnText.innerText = "Copied!";
+        setTimeout(() => btnText.innerText = "Copy Snippet", 2000);
+      });
+    }
+
+    function testBroadcast() {
+      flowmoChannel.postMessage({ type: 'FLOWMO_STATE_CHANGE', state: 'ACTIVE', timestamp: Date.now() });
+      setTimeout(() => {
+        flowmoChannel.postMessage({ type: 'FLOWMO_STATE_CHANGE', state: 'PAUSED', timestamp: Date.now() });
+      }, 3000);
+      showToast('Sent test ping via BroadcastChannel');
+    }
+
+    function formatMs(ms) {
+      const sec = Math.floor((ms / 1000) % 60);
+      const min = Math.floor((ms / (1000 * 60)) % 60);
+      const hrs = Math.floor(ms / (1000 * 60 * 60));
+      return `${hrs.toString().padStart(2, '0')}:${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
+    }
+
+    function showToast(msg, type = 'info') {
+      const toast = document.createElement('div');
+      let bgColor = 'bg-slate-800 border-slate-700 text-white';
+      if (type === 'warning') bgColor = 'bg-amber-950/90 border-amber-600/50 text-amber-200';
+      if (type === 'error') bgColor = 'bg-rose-950/90 border-rose-600/50 text-rose-200';
+
+      toast.className = `fixed bottom-5 right-5 z-50 px-4 py-3 rounded-xl border text-xs font-semibold shadow-2xl transition-all duration-300 transform translate-y-5 opacity-0 ${bgColor}`;
+      toast.innerText = msg;
+      document.body.appendChild(toast);
+
+      setTimeout(() => {
+        toast.classList.remove('translate-y-5', 'opacity-0');
+      }, 50);
+
+      setTimeout(() => {
+        toast.classList.add('opacity-0', 'translate-y-5');
+        setTimeout(() => toast.remove(), 300);
+      }, 3500);
+    }
+  </script>
+</body>
+</html>
